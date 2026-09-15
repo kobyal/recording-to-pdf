@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""r2r — recording to review pack.
+
+  r2r fetch  <url|file> <work>     [--client ID] [--kind K]
+  r2r list   <event-url>           # every session on a Corrivium/AWS event site
+  r2r asr    <work> [--lang he]
+  r2r slides <work> [--thresh .12] [--flat .18] [--per 30]
+  r2r render <work> --content c.json [--name review]
+  r2r all    <url> <work> [--lang he]   # fetch + asr + slides (stops for writing)
+"""
+import argparse, json, os, subprocess, sys
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LIB = os.path.join(HERE, "lib")
+sys.path.insert(0, LIB)
+PY_ENV = os.environ.get("R2R_PY") or os.path.join(HERE, ".venv", "bin", "python")
+PY_ENV = PY_ENV if os.path.exists(PY_ENV) else sys.executable
+
+
+def run(mod, *args):
+    subprocess.run([PY_ENV, os.path.join(LIB, mod)] + [str(a) for a in args],
+                   check=True)
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    f = sub.add_parser("fetch"); f.add_argument("src"); f.add_argument("work")
+    f.add_argument("--client"); f.add_argument("--kind")
+
+    l = sub.add_parser("list"); l.add_argument("src"); l.add_argument("--client")
+
+    a_ = sub.add_parser("asr"); a_.add_argument("work")
+    a_.add_argument("--lang"); a_.add_argument("--window", type=int, default=90)
+
+    s = sub.add_parser("slides"); s.add_argument("work")
+    s.add_argument("--thresh", default="0.12"); s.add_argument("--flat", default="0.0")
+    s.add_argument("--hamming", default="6"); s.add_argument("--per", default="30")
+
+    r = sub.add_parser("render"); r.add_argument("work")
+    r.add_argument("--content", required=True); r.add_argument("--name", default="review")
+
+    al = sub.add_parser("all"); al.add_argument("src"); al.add_argument("work")
+    al.add_argument("--lang"); al.add_argument("--client")
+    al.add_argument("--flat", default="0.0")
+
+    o = ap.parse_args()
+    work = getattr(o, "work", None)
+    if work:
+        os.makedirs(work, exist_ok=True)
+
+    if o.cmd == "list":
+        run("fetch.py", o.src, "/tmp/_r2r", "--list", *( ["--client", o.client] if o.client else []))
+    elif o.cmd == "fetch":
+        run("fetch.py", o.src, work, *(["--client", o.client] if o.client else []),
+            *(["--kind", o.kind] if o.kind else []))
+    elif o.cmd == "asr":
+        run("asr.py", os.path.join(work, "rec.mp4"), work,
+            *(["--lang", o.lang] if o.lang else []), "--window", o.window)
+    elif o.cmd == "slides":
+        run("slides.py", os.path.join(work, "rec.mp4"), os.path.join(work, "frames"),
+            "--thresh", o.thresh, "--flat", o.flat, "--hamming", o.hamming, "--per", o.per)
+    elif o.cmd == "render":
+        run("render.py", o.content, os.path.join(work, "out"), "--name", o.name,
+            "--slides", os.path.join(work, "frames", "kept"))
+    elif o.cmd == "all":
+        run("fetch.py", o.src, work, *(["--client", o.client] if o.client else []))
+        run("asr.py", os.path.join(work, "rec.mp4"), work,
+            *(["--lang", o.lang] if o.lang else []))
+        run("slides.py", os.path.join(work, "rec.mp4"), os.path.join(work, "frames"),
+            "--flat", o.flat)
+        print("\nNow read work/transcript_blocks.txt and the contact sheets in "
+              "work/frames/, write content.json, then: r2r render <work> "
+              "--content content.json")
+
+
+if __name__ == "__main__":
+    main()

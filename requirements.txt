@@ -1,0 +1,5 @@
+mlx-whisper>=0.4        # Apple Silicon ASR; swap for faster-whisper elsewhere
+python-docx>=1.1
+python-pptx>=1.0        # optional: only needed for the PPTX renderer
+pillow>=10.0
+opencv-python-headless>=4.9   # optional: slide-rectangle cropping
