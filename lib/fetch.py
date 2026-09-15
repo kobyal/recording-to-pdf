@@ -11,6 +11,10 @@ Supported sources
 import json, os, re, subprocess, sys, urllib.request
 
 CMS = "https://site-assets.corrivium.live/cms/events"
+
+
+class NoRecording(RuntimeError):
+    """The event site lists this session but never published a VOD."""
 UA = {"User-Agent": "Mozilla/5.0"}
 
 
@@ -64,9 +68,11 @@ def aws_resolve(src, client=None):
     client = client or aws_client_id(host, slug)
     fe = json.loads(get(f"{CMS}/{client}/{slug}/prod/frontend.json"))
     blob = json.dumps(fe)
+    # Only a MediaConvert output is a real recording. Sessions that were never
+    # published still list preshow/postshow "slate" loops - downloading one of
+    # those yields a placeholder video with no slides and a silent transcript,
+    # so treat their absence as "no recording" rather than falling back.
     urls = re.findall(r"https://[^\"\\ ]+/outputs/mediaconvert/[^\"\\ ]+index\.m3u8", blob)
-    if not urls:
-        urls = re.findall(r"https://[^\"\\ ]+index\.m3u8", blob)
     meta = {"slug": slug, "client": client, "host": host,
             "title": fe.get("metaTags", {}).get("title") or slug}
     try:
@@ -80,7 +86,7 @@ def aws_resolve(src, client=None):
     except Exception:
         pass
     if not urls:
-        raise RuntimeError("no HLS manifest in frontend.json")
+        raise NoRecording(f"{slug}: no recording published (slates only)")
     return urls[0], meta
 
 
@@ -93,6 +99,25 @@ def aws_list_sessions(host, any_slug, client=None):
         out.append((e.get("sessionEventId"), e.get("eventtitle"),
                     e.get("customCategory", "")))
     return out
+
+
+def probe_ok(path, min_seconds=60):
+    """A download is only good if it decodes: a video stream and real duration."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries",
+             "format=duration:stream=codec_type", "-of", "json", path],
+            capture_output=True, text=True, timeout=120).stdout
+        info = json.loads(out)
+        dur = float(info.get("format", {}).get("duration", 0) or 0)
+        kinds = {s.get("codec_type") for s in info.get("streams", [])}
+        if "video" not in kinds:
+            return False, "no video stream"
+        if dur < min_seconds:
+            return False, f"duration {dur:.0f}s"
+        return True, dur
+    except Exception as e:
+        return False, f"probe failed: {e}"
 
 
 def variant(manifest, want="video"):
@@ -170,15 +195,18 @@ def fetch(src, outdir, client=None, kind=None, quality="best"):
             cmd = ["ffmpeg", "-loglevel", "error", "-y"] + net + ["-i", v,
                    "-c", "copy", video]
         last = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 subprocess.run(cmd, check=True, timeout=1800)
-                return {"video": video, "meta": meta}
+                ok, why = probe_ok(video)
+                if ok:
+                    return {"video": video, "meta": meta}
+                last = why          # ffmpeg can exit 0 on a truncated stream
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
                 last = e
-                if os.path.exists(video):
-                    os.remove(video)
-        raise RuntimeError(f"download failed after 2 attempts: {last}")
+            if os.path.exists(video):
+                os.remove(video)
+        raise RuntimeError(f"download failed after 3 attempts: {last}")
 
     raise RuntimeError(f"unsupported source: {src}")
 

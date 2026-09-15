@@ -13,12 +13,21 @@ from PIL import Image, ImageChops, ImageStat
 def detect(video, outdir, thresh=0.12, width=1400):
     raw = os.path.join(outdir, "raw")
     os.makedirs(raw, exist_ok=True)
-    subprocess.run(["ffmpeg", "-y", "-i", video, "-vf",
-                    f"select='gt(scene,{thresh})',showinfo,scale={width}:-1",
-                    "-vsync", "vfr", "-q:v", "2",
-                    os.path.join(raw, "s_%04d.jpg")], check=True,
-                   capture_output=True)
-    return sorted(glob.glob(os.path.join(raw, "*.jpg")))
+    r = subprocess.run(["ffmpeg", "-y", "-i", video, "-vf",
+                        f"select='gt(scene,{thresh})',showinfo,scale={width}:-1",
+                        "-vsync", "vfr", "-q:v", "2",
+                        os.path.join(raw, "s_%04d.jpg")], capture_output=True)
+    out = sorted(glob.glob(os.path.join(raw, "*.jpg")))
+    # A truncated download makes ffmpeg exit non-zero partway through. The
+    # frames it already wrote are still good, so only fail if we got nothing.
+    if r.returncode != 0:
+        if not out:
+            raise RuntimeError(
+                "scene detection produced no frames: "
+                + r.stderr.decode("utf-8", "replace")[-400:])
+        sys.stderr.write(f"scene detection ended early ({r.returncode}); "
+                         f"keeping {len(out)} frames\n")
+    return out
 
 
 def dhash(img, size=8):

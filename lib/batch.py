@@ -41,6 +41,10 @@ def one(src, work, lang=None, client=None, thresh=0.12, keep_video=False):
         slides.sheets(kept, os.path.join(work, "frames"), per=30)
         out["frames"] = {"raw": len(raw), "kept": len(kept)}
         out["ok"] = True
+    except F.NoRecording as e:
+        out["ok"] = False
+        out["skipped"] = True
+        out["error"] = str(e)
     except Exception as e:
         out["ok"] = False
         out["error"] = f"{type(e).__name__}: {e}"
@@ -79,7 +83,9 @@ def batch(event_url, root, lang=None, client=None, limit=None, only=None):
         index.append(r)
         json.dump(index, open(os.path.join(root, "index.json"), "w"),
                   ensure_ascii=False, indent=2)
-        flag = "ok" if r.get("ok") else "FAIL " + r.get("error", "")[:70]
+        flag = ("ok" if r.get("ok")
+                else ("skip (no recording)" if r.get("skipped")
+                      else "FAIL " + str(r.get("error", ""))[:70]))
         print(f"      {flag}  {human(r['total_s'])}  "
               f"frames={r.get('frames', {}).get('kept', '-')}", flush=True)
     print(f"\ndone: {sum(1 for r in index if r.get('ok'))}/{len(index)} in "
