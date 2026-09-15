@@ -102,11 +102,20 @@ def variant(manifest, want="video"):
     if want == "audio":
         m = re.search(r'URI="([^"]*audio[^"]*\.m3u8)"', body)
         return base + m.group(1) if m else None
-    best, best_bw = None, -1
-    for bw, uri in re.findall(r"BANDWIDTH=(\d+)[^\n]*\n([^\n#]+)", body):
-        if int(bw) > best_bw:
-            best, best_bw = uri.strip(), int(bw)
-    return base + best if best else manifest
+    # Prefer the largest rendition no wider than max_w. 720p keeps slide text
+    # legible while halving download time and disk against 1080p.
+    max_w = int(os.environ.get("R2R_MAX_WIDTH", "1280"))
+    cands = []
+    for attrs, uri in re.findall(r"#EXT-X-STREAM-INF:([^\n]*)\n([^\n#]+)", body):
+        bw = int(re.search(r"BANDWIDTH=(\d+)", attrs).group(1))
+        res = re.search(r"RESOLUTION=(\d+)x(\d+)", attrs)
+        w = int(res.group(1)) if res else 0
+        cands.append((w, bw, uri.strip()))
+    if not cands:
+        return manifest
+    fit = [c for c in cands if c[0] and c[0] <= max_w]
+    pick = max(fit or cands, key=lambda c: (c[0], c[1]))
+    return base + pick[2]
 
 
 # ------------------------------------------------------------------- fetch
@@ -148,14 +157,28 @@ def fetch(src, outdir, client=None, kind=None, quality="best"):
         # group; muxing both explicitly is the only way to get sound.
         v = variant(manifest, "video")
         a = variant(manifest, "audio")
+        # HLS segment fetches stall silently; reconnect flags plus a wall-clock
+        # timeout and one retry turn a hang into a recoverable failure.
+        net = ["-reconnect", "1", "-reconnect_streamed", "1",
+               "-reconnect_at_eof", "1", "-reconnect_delay_max", "10",
+               "-rw_timeout", "30000000"]
         if a and a != v:
-            cmd = ["ffmpeg", "-loglevel", "error", "-y", "-i", v, "-i", a,
-                   "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", video]
+            cmd = (["ffmpeg", "-loglevel", "error", "-y"] + net + ["-i", v]
+                   + net + ["-i", a, "-map", "0:v:0", "-map", "1:a:0",
+                            "-c", "copy", video])
         else:
-            cmd = ["ffmpeg", "-loglevel", "error", "-y", "-i", v,
+            cmd = ["ffmpeg", "-loglevel", "error", "-y"] + net + ["-i", v,
                    "-c", "copy", video]
-        subprocess.run(cmd, check=True)
-        return {"video": video, "meta": meta}
+        last = None
+        for attempt in range(2):
+            try:
+                subprocess.run(cmd, check=True, timeout=1800)
+                return {"video": video, "meta": meta}
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+                last = e
+                if os.path.exists(video):
+                    os.remove(video)
+        raise RuntimeError(f"download failed after 2 attempts: {last}")
 
     raise RuntimeError(f"unsupported source: {src}")
 

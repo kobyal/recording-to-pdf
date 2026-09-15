@@ -34,12 +34,16 @@ def blocks(segments, window=90):
 
 
 def transcribe(audio, outdir, lang=None, window=90):
-    import mlx_whisper
+    import contextlib, io, mlx_whisper
     t0 = time.time()
     kw = dict(path_or_hf_repo=MODEL, verbose=False, condition_on_previous_text=False)
     if lang:
         kw["language"] = lang
-    r = mlx_whisper.transcribe(audio, **kw)
+    # mlx-whisper writes a tqdm bar to stderr regardless of verbose=False,
+    # which drowns a batch log. Swallow it; keep real errors.
+    buf = io.StringIO()
+    with contextlib.redirect_stderr(buf):
+        r = mlx_whisper.transcribe(audio, **kw)
     os.makedirs(outdir, exist_ok=True)
     json.dump(r, open(f"{outdir}/transcript.json", "w"), ensure_ascii=False)
     with open(f"{outdir}/transcript.txt", "w") as f:
