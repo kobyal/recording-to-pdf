@@ -15,7 +15,9 @@ def detect(video, outdir, thresh=0.12, width=1400):
     os.makedirs(raw, exist_ok=True)
     r = subprocess.run(["ffmpeg", "-y", "-i", video, "-vf",
                         f"select='gt(scene,{thresh})',showinfo,scale={width}:-1",
-                        "-vsync", "vfr", "-q:v", "2",
+                        # ffmpeg 8's mjpeg encoder refuses limited-range yuv420p
+                        # (YouTube downloads) unless full range is forced.
+                        "-fps_mode", "vfr", "-q:v", "2", "-pix_fmt", "yuvj420p",
                         os.path.join(raw, "s_%04d.jpg")], capture_output=True)
     out = sorted(glob.glob(os.path.join(raw, "*.jpg")))
     # A truncated download makes ffmpeg exit non-zero partway through. The
