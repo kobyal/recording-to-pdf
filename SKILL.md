@@ -41,6 +41,7 @@ Summit event site — that is how you batch a whole conference.
 | Source | Handling |
 |---|---|
 | YouTube | `yt-dlp`; chapters become a free agenda; **check `--list-subs` first**, real captions skip ASR |
+| X (Twitter) post | `yt-dlp <post-url>` works without login (`/video/1` suffix optional). Reposts are usually clipped from a YouTube talk/interview and the caption is engagement bait — misattributed speakers, invented quotes. Take title, speaker and claims from the transcript + slides only; name the original event if the frames show it, else say it is unidentified |
 | Zoom | needs `--cookies-from-browser chrome`; without it yt-dlp reports "no video formats" |
 | AWS Summit / Corrivium | `fetch.py` resolves site → CMS `frontend.json` → MediaConvert HLS. No login needed for the VOD manifests even when the page is gated |
 | Local file / direct `.m3u8` | passed straight through |
