@@ -209,6 +209,20 @@ public repo, and don't send them anywhere the user didn't name.
 
 ## Recording a live Zoom on a Mac
 
+Once the user is in the meeting, one command does everything below:
+
+```bash
+lib/zoom_record.sh start [--lang he]   # new ~/Documents/r2r-work/zoom-YYYYMMDD-HHMM, OBS + window frames, audio check at 35 s
+lib/zoom_record.sh check               # health check of the latest recording; run every 3 min
+```
+
+It refuses to start without a meeting (no `CptHost`). It closes OBS, rewrites the
+R2R profile and scene to point at the new folder, and records Zoom app audio,
+the default mic (Zoom's output never has the user's own voice) and Zoom app
+video at 1080p/5 fps. That video is the backup for slides if the window frames fail:
+`screenshare.py video`. It also starts `zoom_wincap.sh`. `check` prints
+OK/FAIL for frames, OBS and audio, with what Whisper heard in the last 30 s.
+
 - Audio: OBS (`open -a OBS --args --startrecording --minimize-to-tray`), source
   "macOS Screen Capture" in **application mode on Zoom** (scene JSON:
   `type: 2, application: "us.zoom.xos"`), Capture Audio on. Display mode can
