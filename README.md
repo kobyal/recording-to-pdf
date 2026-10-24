@@ -94,6 +94,7 @@ judgement starts.
 | AWS Summit / Corrivium | Resolves the event site to its CMS config and then to the MediaConvert HLS manifest. The video masters carry video-only renditions plus a separate audio group, so both are muxed explicitly |
 | Direct HLS / local file | Passed straight through |
 | Live Zoom meeting (macOS) | Record it yourself: OBS captures the Zoom app's audio, `lib/zoom_wincap.sh` grabs the Zoom window every 3 s (works while covered), and `lib/zoom_speakers.py` reads the green active-speaker tile with macOS Vision to build a speaker timeline. See `SKILL.md` |
+| Screen recording of a Zoom meeting (any OS) | `lib/zoom_speakers.py video <rec.mp4> ...` reads the active speaker's name label every second (green-bordered tile, or the big tile in speaker view) with macOS Vision or Windows' built-in OCR (`lib/ocr_tiles.ps1`) |
 
 `bin/r2r list <event-url>` enumerates every session on a Corrivium event site,
 and `lib/batch.py` runs the whole conference, deleting each video once the

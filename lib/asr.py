@@ -23,9 +23,12 @@ def fw_transcribe(audio, lang, initial_prompt=None):
     from faster_whisper import WhisperModel, BatchedInferencePipeline
     name = os.environ.get("R2R_MODEL") or FW_MODELS.get(lang, FW_DEFAULT_MODEL)
     model = WhisperModel(name, device="cpu", compute_type="int8")
-    # batched decoding: ~25% faster on a 4-vCPU VM, same text
+    # batched decoding: ~25% faster on a 4-vCPU VM, same text. Timestamps on: sentence-level
+    # segments (~4 s) instead of one per 30 s chunk, at no measurable cost - speaker
+    # attribution needs them.
     segs, info = BatchedInferencePipeline(model=model).transcribe(audio, language=lang, batch_size=8,
-                                                               initial_prompt=initial_prompt)
+                                                               initial_prompt=initial_prompt,
+                                                               without_timestamps=False)
     segs = [{"start": s.start, "end": s.end, "text": s.text} for s in segs]
     return {"text": "".join(s["text"] for s in segs), "segments": segs,
             "language": info.language}

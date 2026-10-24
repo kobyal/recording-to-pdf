@@ -143,7 +143,12 @@ and use that order to attribute each update; the name the host calls out
 `.venv/bin/python lib/zoom_speakers.py <win_dir> work/transcript.json <audio start HH:MM:SS> work/attributed.txt`
 OCRs the green active-speaker tile in every other window capture (macOS Vision)
 and writes the transcript with `<<name>>` at each change — write the per-person
-table from that. Re-run ASR with `initial_prompt` = participant names + domain
+table from that. For a screen recording of the Zoom app instead (any OS; OCR is
+macOS Vision or Windows.Media.Ocr):
+`python lib/zoom_speakers.py video work/rec.mp4 work/transcript.json work/attributed.txt --self "<recorder's Zoom name>"`
+reads the green-bordered tile (gallery / filmstrip during a share) or the big
+tile's label (speaker view) every second; `--self` drops the recorder's own tile.
+Re-run ASR with `initial_prompt` = participant names + domain
 terms and `no_speech_threshold=0.9`; the default pass silently drops stretches.
 When in doubt, check the Zoom frames at that moment: the active speaker's tile
 has a green border (frame time = recording start + transcript offset). The person
