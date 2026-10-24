@@ -227,7 +227,10 @@ public repo, and don't send them anywhere the user didn't name.
 - End trigger: poll `pgrep CptHost` (Zoom's in-meeting process). Never use
   System Events window lists — Accessibility can be revoked mid-meeting.
 - Health check every 3 min (frames growing, OBS up, audio not silent) and tell
-  the user immediately if one fails.
+  the user immediately if one fails. `<rec_dir>/wincap.log` records every window
+  switch and failed capture. Zoom keeps unnamed windows parked off-display and
+  titles the meeting window just "Zoom" while viewing a share, so a picker that
+  ignores either one captures nothing.
 - OBS traps: a quit leaves a crash sentinel → next launch blocks on a dialog;
   delete `~/Library/Application Support/obs-studio/.sentinel/*` first. Edit the
   scene JSON only with OBS closed (it overwrites on exit).
