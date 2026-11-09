@@ -4,7 +4,7 @@
 Schema (see schema.md): {lang, rtl, title, subtitle, meta[], blocks[]}
 Block kinds: h1 h2 h3 body bullets table image callout quote pagebreak
 """
-import json, os, re, subprocess, sys
+import json, os, re, shutil, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from builder import Doc
 
@@ -190,9 +190,17 @@ def build(spec, outdir, name="review", slides_dir=None, timestamps=None):
     os.makedirs(outdir, exist_ok=True)
     docx = os.path.join(outdir, f"{name}.docx")
     d.save(docx)
-    subprocess.run(["soffice", "--headless", "--convert-to", "pdf", docx,
-                    "--outdir", outdir], check=True, capture_output=True)
-    return docx, os.path.join(outdir, f"{name}.pdf")
+    pdf = os.path.join(outdir, f"{name}.pdf")
+    if shutil.which("soffice"):
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", docx,
+                        "--outdir", outdir], check=True, capture_output=True)
+    else:
+        # Windows without LibreOffice (bank PCs): Word does the conversion
+        ps = ("$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
+              f"$d = $w.Documents.Open('{os.path.abspath(docx)}', $false, $true); "
+              f"$d.SaveAs2('{os.path.abspath(pdf)}', 17); $d.Close($false); $w.Quit()")
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True, capture_output=True)
+    return docx, pdf
 
 
 if __name__ == "__main__":
@@ -206,7 +214,7 @@ if __name__ == "__main__":
     ap.add_argument("--index", default=os.environ.get("R2R_INDEX"),
                     help="meeting index (INDEX.md) to update; default $R2R_INDEX")
     a = ap.parse_args()
-    spec = json.load(open(a.content, encoding="utf-8"))
+    spec = json.load(open(a.content, encoding="utf-8-sig"))
     docx, pdf = build(spec, a.outdir, a.name, a.slides, True if a.timestamps else None)
     rec = write_record(spec, a.outdir, a.name, pdf, a.index)
     print(json.dumps({"docx": docx, "pdf": pdf, "record": rec}, ensure_ascii=False))

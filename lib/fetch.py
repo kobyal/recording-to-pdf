@@ -155,7 +155,14 @@ def fetch(src, outdir, client=None, kind=None, quality="best"):
         # Later steps read work/rec.mp4; link rather than copy multi-GB files.
         if os.path.lexists(video):
             os.remove(video)
-        os.symlink(os.path.abspath(src), video)
+        try:
+            os.symlink(os.path.abspath(src), video)
+        except OSError:  # Windows without admin/Developer Mode: hard link, else copy
+            try:
+                os.link(os.path.abspath(src), video)
+            except OSError:
+                import shutil
+                shutil.copyfile(src, video)
         return {"video": video, "meta": meta}
 
     if kind in ("youtube", "zoom", "generic"):

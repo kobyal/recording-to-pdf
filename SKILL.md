@@ -79,10 +79,18 @@ wallpaper, edge-dense; a skin-tone check rejects camera feeds), crops to it and
 dedupes on the crop:
 ```bash
 .venv/bin/python lib/screenshare.py frames <window_jpgs_dir> work/frames   # Mac window captures
-.venv/bin/python lib/screenshare.py video  work/rec.mp4      work/frames --every 5
+.venv/bin/python lib/screenshare.py video  work/rec.mp4      work/frames --every 2
 ```
 Result: `work/frames/kept/ss_NNN.jpg` (+ `.txt` with the source time) and
 `sheet_NN.jpg`. Same day: DevOps 1 → 5 pictures, a Meetup 3 → 10.
+
+**Browser webinars (Webex/Meet/Zoom web)** put the share in a ~600 px box on a black
+letterbox; dark slides and terminals there look like UI, so one frame can't find them.
+`screenshare.py` reuses a box seen in other frames when the ring around it is
+unchanged, keeps the settled frame of each picture (≥ 2 samples at `--every 2`), dedupes on
+text changes too (same-template slides, terminal outputs), and enlarges small crops 2×.
+An AWS Webex webinar: 41 strips → 56 slides incl. every demo output. Demo results are the
+most valuable pictures: use each one next to its explanation.
 
 **Reconcile transcript against deck.** The slides carry facts the audio does
 not, and ASR garbles domain terms and names. Verify every quote at its
@@ -186,6 +194,17 @@ When writing, read your private people file and use it:
 - **Role / works on** resolve who an update or topic belongs to when ASR is
   unclear (the portal migration update is Yossi's, not whoever was called).
 - **Spelling**: write the canonical name, not the ASR's version.
+- **Full names, always**: write every person by full name from the people file
+  (first + last) — in summary, body, quote `by`, action owners. A role may follow the
+  name, never replace it ("the organiser", "the security rep" alone are wrong). Unsure
+  who said it → name the two likely people, not a role. In Zoom speaker view the active
+  speaker's name is on the main tile (bottom-left): OCR it every ~5 s from the video to
+  attribute when there's no green-tile timeline.
+- **No shared screen?** Don't pad with camera frames. Make 1–2 explanatory visuals
+  (an HTML diagram of the flow/decision rendered with headless Chrome, RTL for Hebrew)
+  plus `table` blocks, and say in the about callout that no screen was shared.
+  Image files go in `work/frames/kept/`; render silently skips missing ones, so
+  check its output for "missing image" and `pdfimages -list` before sending.
 
 **Context file (private, optional).** Next to the people file you can keep a
 context file for a recurring meeting: a glossary of internal systems and terms
@@ -270,6 +289,22 @@ and the new recorder then writes nothing and logs nothing.
 - OBS traps: a quit leaves a crash sentinel → next launch blocks on a dialog;
   delete `~/Library/Application Support/obs-studio/.sentinel/*` first. Edit the
   scene JSON only with OBS closed (it overwrites on exit).
+
+## Recording a live Zoom on Windows
+
+`lib/zoom_live.py` needs no admin rights, OBS or extra drivers:
+
+```bash
+python lib/zoom_live.py start <work> [--every 2]   # stops by itself when the meeting window is gone
+python lib/zoom_live.py status <work>
+python lib/zoom_live.py stop <work>                # or create <work>\STOP
+```
+
+Audio is WASAPI loopback of the default playback device (everyone but the user's own
+mic); pictures are the Zoom meeting window via PrintWindow (works while covered, not
+while minimised), or the primary screen while the user shares. It writes `rec.mp4`
+(audio only) for `r2r asr` and `win/*.jpg` for `screenshare.py frames`. Without
+LibreOffice, `render` converts the DOCX to PDF with Word instead.
 
 ## Hebrew / RTL
 
