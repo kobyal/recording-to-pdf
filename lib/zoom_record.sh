@@ -4,7 +4,10 @@
 #   It replaces OBS's R2R profile and scene, and refuses while OBS is running (it may be recording) unless --force.
 #   --no-mic: on speakers the mic also hears Zoom, so other people come out twice; use it then (your own voice is lost).
 #   zoom_record.sh check [rec_dir]                                   # health check; default: the latest recording
-# OBS needs Screen Recording + Microphone permission; the shell running this needs Screen Recording.
+#   zoom_record.sh stop  [rec_dir]                                   # no-OBS mode: stop the recorders, write audio.wav
+#                                                                    # (runs by itself when the meeting ends)
+# Without OBS installed it falls back to lib/zoom_audio.swift (Zoom app audio -> zoom.f32) + ffmpeg (mic -> mic.aac).
+# OBS needs Screen Recording + Microphone permission; the shell running this needs Screen Recording (+ Microphone without OBS).
 H=${0:A:h}; PY=${H:h}/.venv/bin/python; O=~/Library/Application\ Support/obs-studio
 cmd=${1:-start}; shift; lang=""; root=~/Documents/r2r-work; mic=true; force=0
 while (( $# )); do case $1 in --lang) lang=$2; shift 2;; --root) root=$2; shift 2;; --no-mic) mic=false; shift;;
@@ -62,6 +65,24 @@ EOF
 EOF
 }
 
+fallback_start() {  # no OBS: Zoom app audio via ScreenCaptureKit + default mic via ffmpeg, each in its own growing file
+  local bin=${H:h}/.build/zoom_audio
+  if [[ ! -x $bin || $H/zoom_audio.swift -nt $bin ]]; then mkdir -p ${bin:h}; swiftc -O $H/zoom_audio.swift -o $bin || return 1; fi
+  : > $R/pids
+  nohup $bin $R/zoom.f32 > $R/audio_zoom.log 2>&1 &; print $! >> $R/pids
+  if [[ $mic == true ]]; then  # ADTS, not mp4: it is readable while it grows. It drops samples while muted, so keep it apart
+    nohup ffmpeg -hide_banner -loglevel error -f avfoundation -i ":default" -ac 1 -ar 48000 -c:a aac -b:a 96k -f adts $R/mic.aac > $R/mic.log 2>&1 &
+    print $! >> $R/pids; fi
+}
+
+stop() {  # no-OBS mode: end the recorders, kill -9 if one hangs (raw PCM loses nothing), convert Zoom audio for r2r asr
+  [[ -s $R/pids ]] || { print "no recorders listed in $R/pids"; return 1 }
+  local p=$(cat $R/pids); kill -INT ${=p} 2>/dev/null; sleep 2; kill -9 ${=p} 2>/dev/null; rm -f $R/pids
+  [[ -s $R/wincap.pid ]] && (( $(cat $R/wincap.pid) != PPID )) && kill $(cat $R/wincap.pid) 2>/dev/null
+  if [[ -s $R/zoom.f32 ]]; then ffmpeg -v error -f f32le -ar 48000 -ac 1 -i $R/zoom.f32 -ar 16000 -ac 1 -y $R/audio.wav
+    print "stopped $(date +%T); Zoom audio $(( $(stat -f %z $R/zoom.f32) / 192000 )) s -> $R/audio.wav"; fi
+}
+
 check() {  # frames growing, OBS recording, audio not silent and actually speech
   local ok=1 rec=$(ls -t $R/*.mp4(N) 2>/dev/null | head -1) n=$(ls $R/win 2>/dev/null | wc -l | tr -d ' ')
   local last=$(ls -t $R/win 2>/dev/null | head -1); local age=$(( $(date +%s) - $(stat -f %m $R/win/$last 2>/dev/null || echo 0) ))
@@ -69,13 +90,22 @@ check() {  # frames growing, OBS recording, audio not silent and actually speech
   if pgrep -q -f zoom_wincap.sh && (( age < 15 )); then print "frames:  OK  $n saved, last ${age}s ago"
   else local since="none yet"; (( n )) && since="last ${age}s ago"; print "frames:  FAIL  $n saved, $since, capture loop $(pgrep -q -f zoom_wincap.sh && echo running || echo stopped)"; ok=0
     tail -3 $R/wincap.log 2>/dev/null | sed 's/^/         /'; fi
-  if ! pgrep -q -x OBS; then print "obs:     FAIL  not running"; ok=0
+  local w=$R/scratch/probe.wav src=""; mkdir -p $R/scratch
+  if [[ -e $R/zoom.f32 ]]; then  # no-OBS mode
+    local alive=0; [[ -s $R/pids ]] && kill -0 $(head -1 $R/pids) 2>/dev/null && alive=1
+    local secs=$(( $(stat -f %z $R/zoom.f32) / 192000 ))
+    if (( ! alive )); then print "rec:     FAIL  Zoom audio recorder not running"; ok=0
+    elif (( secs == 0 )); then print "rec:     FAIL  recorder running but nothing written (stale recorder holding the capture?)"; ok=0; tail -2 $R/audio_zoom.log
+    else print "rec:     OK  zoom.f32, ${secs}s"; src=1
+      ffmpeg -v quiet -f f32le -ar 48000 -ac 1 -sseof -30 -i $R/zoom.f32 -ac 1 -ar 16000 -y $w 2>/dev/null; fi
+  elif ! pgrep -q -x OBS; then print "obs:     FAIL  not running"; ok=0
   elif [[ -z $rec ]]; then print "obs:     FAIL  running but no recording in $R"; ok=0
   else
     local dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $rec 2>/dev/null | cut -d. -f1)
-    print "obs:     OK  ${rec:t}, ${dur:-?}s"
-    local w=$R/scratch/probe.wav; mkdir -p $R/scratch
+    print "obs:     OK  ${rec:t}, ${dur:-?}s"; src=1
     ffmpeg -v quiet -sseof -30 -i $rec -vn -ac 1 -ar 16000 -y $w 2>/dev/null
+  fi
+  if [[ -n $src ]]; then
     local mean=$(ffmpeg -i $w -af volumedetect -f null - 2>&1 | awk '/mean_volume/{print $5}')
     local model=mlx-community/whisper-large-v3-turbo; [[ $lang == he ]] && model=mlx-community/ivrit-ai-whisper-large-v3-turbo-mlx
     local text=$($PY -c "import sys,mlx_whisper;r=mlx_whisper.transcribe(sys.argv[1],path_or_hf_repo=sys.argv[2],language=sys.argv[3] or None,condition_on_previous_text=False);print(r['text'].strip())" $w $model "$lang" 2>/dev/null | tail -1)
@@ -88,15 +118,22 @@ check() {  # frames growing, OBS recording, audio not silent and actually speech
   (( ok )) && print "HEALTH OK" || print "HEALTH PROBLEM"
 }
 
-if [[ $cmd == check ]]; then R=${R:-$(cat $root/CURRENT 2>/dev/null)}; [[ -d $R ]] || { print "no recording folder"; exit 1 }; check; exit; fi
-[[ $cmd == start ]] || { print "usage: zoom_record.sh start|check"; exit 2 }
+if [[ $cmd == check || $cmd == stop ]]; then R=${R:-$(cat $root/CURRENT 2>/dev/null)}; [[ -d $R ]] || { print "no recording folder"; exit 1 }; $cmd; exit; fi
+[[ $cmd == start ]] || { print "usage: zoom_record.sh start|check|stop"; exit 2 }
 
-pgrep -q CptHost || { print "No Zoom meeting running (CptHost). Join the meeting first."; exit 1 }
+pgrep -q CptHost || swift $H/zoom_window.swift 2>/dev/null | grep -q '^MEETING 1' || { print "No Zoom meeting running (no CptHost, no Zoom Meeting window). Join the meeting first."; exit 1 }
 R=$root/zoom-$(date +%Y%m%d-%H%M); mkdir -p $R/win $R/scratch; print $R > $root/CURRENT
-if pgrep -q -x OBS && (( ! force )); then print "OBS is already running and may be recording: quitting it would lose that file. Stop it yourself, or pass --force."; exit 1; fi
-if pgrep -q -x OBS; then osascript -e 'quit app "OBS"' 2>/dev/null; for i in {1..10}; do pgrep -q -x OBS || break; sleep 1; done; pkill -x OBS; sleep 1; fi
-rm -rf "$O/.sentinel"; obs_config
-open -a OBS --args --profile R2R --collection R2R --startrecording --minimize-to-tray
-nohup zsh $H/zoom_wincap.sh $R/scratch $R > /dev/null 2>&1 &
+# a recorder left from an earlier meeting holds the capture and the new one writes nothing: clear them first
+pkill -9 -f "${H:h}/.build/zoom_audio" 2>/dev/null; pkill -f "$H/zoom_wincap.sh" 2>/dev/null
+if open -Ra OBS 2>/dev/null; then
+  if pgrep -q -x OBS && (( ! force )); then print "OBS is already running and may be recording: quitting it would lose that file. Stop it yourself, or pass --force."; exit 1; fi
+  if pgrep -q -x OBS; then osascript -e 'quit app "OBS"' 2>/dev/null; for i in {1..10}; do pgrep -q -x OBS || break; sleep 1; done; pkill -x OBS; sleep 1; fi
+  rm -rf "$O/.sentinel"; obs_config
+  open -a OBS --args --profile R2R --collection R2R --startrecording --minimize-to-tray
+else
+  print "OBS not installed: recording Zoom audio with ScreenCaptureKit$( [[ $mic == true ]] && echo ' and the mic with ffmpeg')"
+  fallback_start || { print "could not build lib/zoom_audio.swift"; exit 1 }
+fi
+nohup zsh $H/zoom_wincap.sh $R/scratch $R > /dev/null 2>&1 &; print $! > $R/wincap.pid
 print "recording into $R; checking in 35 s..."
 sleep 35; check

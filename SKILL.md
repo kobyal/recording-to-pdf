@@ -214,9 +214,13 @@ Once the user is in the meeting, one command does everything below:
 ```bash
 lib/zoom_record.sh start [--lang he]   # new ~/Documents/r2r-work/zoom-YYYYMMDD-HHMM, OBS + window frames, audio check at 35 s
 lib/zoom_record.sh check               # health check of the latest recording; run every 3 min
+lib/zoom_record.sh stop                # no-OBS mode only: stop the recorders, write audio.wav (runs by itself at meeting end)
 ```
 
-It refuses to start without a meeting (no `CptHost`). It closes OBS, rewrites the
+It refuses to start without a meeting: no `CptHost` and no meeting window
+(newer Zoom builds run no `CptHost`, so `zoom_window.swift` also reports
+`MEETING 1` for a "Zoom Meeting" window, a large window titled "Zoom", or the
+floating video). It closes OBS, rewrites the
 R2R profile and scene to point at the new folder, and records Zoom app audio,
 the default mic (Zoom's output never has the user's own voice) and Zoom app
 video at 1080p/5 fps. That video is the backup for slides if the window frames fail:
@@ -225,6 +229,18 @@ OK/FAIL for frames, OBS and audio, with what Whisper heard in the last 30 s.
 It refuses while OBS is already running (quitting it would lose a recording in
 progress); `--force` overrides. On speakers use `--no-mic`: the mic also hears Zoom,
 so everyone else would be recorded twice.
+
+**Without OBS** (not installed) it falls back by itself: `lib/zoom_audio.swift`
+(built once into `.build/zoom_audio`) records Zoom's app audio with
+ScreenCaptureKit to `zoom.f32` (raw mono float32, 48 kHz), and ffmpeg records
+the default mic to `mic.aac` (ADTS). Both formats grow on disk, so `check` can
+read them mid-meeting and a crash loses nothing; mp4/m4a stay empty until they
+are closed. When the meeting ends, `zoom_wincap.sh` runs `stop`, which writes
+`audio.wav` (Zoom audio, 16 kHz) for `r2r asr`. Keep `mic.aac` apart: it drops
+samples while the user is muted, so it doesn't line up with `zoom.f32`.
+Transcribe it separately when the user's own words matter. `start` first kills
+recorders left over from an earlier meeting: a stale one keeps the capture,
+and the new recorder then writes nothing and logs nothing.
 
 - Audio: OBS (`open -a OBS --args --startrecording --minimize-to-tray`), source
   "macOS Screen Capture" in **application mode on Zoom** (scene JSON:
@@ -237,12 +253,14 @@ so everyone else would be recorded twice.
 - Picture: capture the **Zoom Meeting window**, not the screen, so the user can
   keep working — `screencapture -x -o -l<windowid> -t jpg` every 3 s, window id
   from `CGWindowListCopyWindowInfo` (owner `zoom.us`, name "Zoom Meeting",
-  layer 0), re-resolved every minute — `lib/zoom_wincap.sh <scratch> <rec_dir>`
+  layer 0, or layer 3 while the user shares their own screen), re-resolved every minute — `lib/zoom_wincap.sh <scratch> <rec_dir>`
   with `lib/zoom_window.swift` does exactly this. Works while covered; fails only if
   minimised. Feed those JPEGs to `lib/screenshare.py frames` (see above), not
   `r2r slides`.
-- End trigger: poll `pgrep CptHost` (Zoom's in-meeting process). Never use
-  System Events window lists — Accessibility can be revoked mid-meeting.
+- End trigger: `pgrep CptHost` (Zoom's in-meeting process) where it exists,
+  otherwise `MEETING 0` from `zoom_window.swift` twice in a row, about a minute
+  apart (one odd window list must not end the recording). Never use System
+  Events window lists — Accessibility can be revoked mid-meeting.
 - Health check every 3 min (frames growing, OBS up, audio not silent) and tell
   the user immediately if one fails. `<rec_dir>/wincap.log` records every window
   switch and failed capture. Zoom keeps unnamed windows parked off-display and

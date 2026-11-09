@@ -11,3 +11,4 @@ PEOPLE.md
 people.md
 *.people.md
 people.local.*
+.build/
