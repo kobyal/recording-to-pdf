@@ -91,7 +91,7 @@ check() {  # frames growing, OBS recording, audio not silent and actually speech
 if [[ $cmd == check ]]; then R=${R:-$(cat $root/CURRENT 2>/dev/null)}; [[ -d $R ]] || { print "no recording folder"; exit 1 }; check; exit; fi
 [[ $cmd == start ]] || { print "usage: zoom_record.sh start|check"; exit 2 }
 
-pgrep -q CptHost || { print "No Zoom meeting running (CptHost). Join the meeting first."; exit 1 }
+pgrep -q CptHost || swift $H/zoom_window.swift 2>/dev/null | grep -q '^MEETING 1' || { print "No Zoom meeting running (no CptHost, no Zoom Meeting window). Join the meeting first."; exit 1 }
 R=$root/zoom-$(date +%Y%m%d-%H%M); mkdir -p $R/win $R/scratch; print $R > $root/CURRENT
 if pgrep -q -x OBS && (( ! force )); then print "OBS is already running and may be recording: quitting it would lose that file. Stop it yourself, or pass --force."; exit 1; fi
 if pgrep -q -x OBS; then osascript -e 'quit app "OBS"' 2>/dev/null; for i in {1..10}; do pgrep -q -x OBS || break; sleep 1; done; pkill -x OBS; sleep 1; fi
