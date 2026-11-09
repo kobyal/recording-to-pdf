@@ -195,7 +195,7 @@ def build(spec, outdir, name="review", slides_dir=None, timestamps=None):
         subprocess.run(["soffice", "--headless", "--convert-to", "pdf", docx,
                         "--outdir", outdir], check=True, capture_output=True)
     else:
-        # Windows without LibreOffice (bank PCs): Word does the conversion
+        # Windows without LibreOffice (locked-down PCs): Word does the conversion
         ps = ("$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
               f"$d = $w.Documents.Open('{os.path.abspath(docx)}', $false, $true); "
               f"$d.SaveAs2('{os.path.abspath(pdf)}', 17); $d.Close($false); $w.Quit()")
