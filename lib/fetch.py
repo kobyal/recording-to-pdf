@@ -166,7 +166,9 @@ def fetch(src, outdir, client=None, kind=None, quality="best"):
         return {"video": video, "meta": meta}
 
     if kind in ("youtube", "zoom", "generic"):
-        cmd = ["yt-dlp", "-f", "bv*+ba/b", "-o", video, src]
+        # YouTube pairs an mp4 video with a webm audio; without a fixed merge format the
+        # result is rec.webm/mkv and nothing finds rec.mp4
+        cmd = ["yt-dlp", "-f", "bv*+ba/b", "--merge-output-format", "mp4", "-o", video, src]
         if kind == "zoom":
             cmd[1:1] = ["--cookies-from-browser", "chrome"]
         subprocess.run(cmd, check=True)
