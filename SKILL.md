@@ -120,6 +120,24 @@ when the content itself is an email header with addresses, a chat panel, a
 participant list or a dialog box; for an email body, crop off the
 From/To/CC block and keep the body.
 
+**Long meetings (an hour or more, several presenters): cover everything.** The
+length of the document scales with the meeting; a 90-minute kickoff with four demos
+came out thin at 11 pages and right at 20 pages with 24 pictures.
+- Don't trust `screenshare.py` alone. On that meeting it kept 44 frames yet missed
+  whole demos (architecture diagrams, a live app, agent output, a PR, a metrics
+  console). Also sample one frame every 20 s, make contact sheets, and pull every
+  distinct screen at full resolution:
+  `ffmpeg -i work/rec.mp4 -vf "fps=1/20,scale=480:-1" work/scan/s%04d.jpg`
+- Give every presenter and every demo its own section, with the concrete things
+  on screen: component names, the flow step by step, the numbers shown.
+- For a roadmap deck, put each stage slide next to a table of its contents and
+  what was said about it in the room.
+- Add a participants table (name, role, in the room or remote), including
+  outside companies helping the team.
+- A shared room microphone hides who spoke: name a speaker only when the reply or
+  the addressing makes it clear, otherwise write "from the room"; mark names you
+  could not verify with "(?)".
+
 ## Meetings (work vs. not)
 
 A recording is a **meeting** when it is a live call among colleagues (Zoom
