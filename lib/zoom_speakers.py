@@ -280,6 +280,11 @@ def attribute(kinds, seen, segs, out, every=1, self_names=""):
         and an e-mail domain whose '@' was misread."""
         best = 0
         for v in {line, line[1:], line[2:], line.partition(" ")[2]}:
+            if " " in key and " " in line.strip() and " " not in v.strip():
+                continue                               # a surname alone ("cohen") is not evidence
+            if " " in v.strip() and " " in key and \
+                    difflib.SequenceMatcher(None, v.split()[0], key.split()[0]).ratio() < .6:
+                continue                               # same surname, other person ("avi cohen" vs "moti cohen")
             best = max(best, difflib.SequenceMatcher(None, v, key).ratio())
             if len(key) >= 8:
                 best = max(best, difflib.SequenceMatcher(None, v[:len(key)], key).ratio())
